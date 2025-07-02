@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: login-app-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: login-app-backend
+  template:
+    metadata:
+      labels:
+        app: login-app-backend
+    spec:
+      containers:
+        - name: backend
+          image: amishacr.azurecr.io/login-app-backend:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MONGO_URI
+              value: mongodb://mongo-service:27017/login-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: login-app-backend
+spec:
+  selector:
+    app: login-app-backend
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+  type: LoadBalancer

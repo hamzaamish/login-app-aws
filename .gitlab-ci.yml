@@ -1,0 +1,36 @@
+stages:
+  - build_and_push
+  - deploy_to_aks
+
+build_and_push_backend:
+  stage: build_and_push
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - export DOCKER_BUILDKIT=0  # 🛠️ Disable BuildKit to fix login error
+    - echo "$ACR_PASSWORD" | docker login $ACR_LOGIN_SERVER -u "$ACR_USERNAME" --password-stdin
+    - docker build -t $ACR_LOGIN_SERVER/login-app-backend ./backend
+    - docker push $ACR_LOGIN_SERVER/login-app-backend:latest
+
+build_and_push_frontend:
+  stage: build_and_push
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - export DOCKER_BUILDKIT=0  # 🛠️ Disable BuildKit to fix login error
+    - echo "$ACR_PASSWORD" | docker login $ACR_LOGIN_SERVER -u "$ACR_USERNAME" --password-stdin
+    - docker build -t $ACR_LOGIN_SERVER/login-app-frontend ./frontend
+    - docker push $ACR_LOGIN_SERVER/login-app-frontend:latest
+
+deploy_to_aks:
+  stage: deploy_to_aks
+  image: mcr.microsoft.com/azure-cli:latest
+  before_script:
+    - az aks install-cli
+  script:
+    - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
+    - az aks get-credentials --resource-group devops-rg --name amishaks --overwrite-existing
+    # Apply manifests
+    - kubectl apply -f k8s/
