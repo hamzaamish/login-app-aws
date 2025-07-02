@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: amishacr.azurecr.io/login-app-frontend:latest
+          image: amishacr.azurecr.io/frontend:latest
           ports:
             - containerPort: 3000
 ---
