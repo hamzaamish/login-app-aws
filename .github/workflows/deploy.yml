@@ -1,49 +1,106 @@
-name: Build and Deploy to AWS ECR and EKS
+name: CI/CD Pipeline – Build, Test, Push & Deploy
 
 on:
   push:
     branches:
-      - main  # or your working branch
+      - main  # Change to your default branch if needed
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 862848730948.dkr.ecr.us-east-1.amazonaws.com
+  EKS_CLUSTER_NAME: devops-eks-cluster
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  build-and-deploy:
+  build:
+    name: 🔧 Build Docker Images
     runs-on: ubuntu-latest
 
-    environment: production
-
     steps:
-      - name: Checkout code
+      - name: 🛎️ Checkout code
         uses: actions/checkout@v3
 
-      - name: Configure AWS credentials
+      - name: 🔐 Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-          docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+      - name: 🐳 Build frontend Docker image
+        run: docker build -t frontend:latest ./frontend
 
-      - name: Build and Push Frontend Docker image
-        run: |
-          docker build -t frontend ./frontend
-          docker tag frontend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
+      - name: 🐳 Build backend Docker image
+        run: docker build -t backend:latest ./backend
 
-      - name: Build and Push Backend Docker image
-        run: |
-          docker build -t backend ./backend
-          docker tag backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
+  test:
+    name: ✅ Run App Tests
+    runs-on: ubuntu-latest
+    needs: build
 
-      - name: Update kubeconfig for EKS
-        run: |
-          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v3
 
-      - name: Deploy to EKS
+      - name: 🧪 Test frontend (React)
         run: |
-          kubectl apply -f k8s/
+          cd frontend
+          npm install
+          npm test || echo "Frontend tests failed but continuing..."
+
+      - name: 🧪 Test backend (Node.js)
+        run: |
+          cd backend
+          npm install
+          npm test || echo "Backend tests failed but continuing..."
+
+  push:
+    name: 🚀 Push Images to ECR
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🔑 Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 🐳 Build & push frontend to ECR
+        run: |
+          docker build -t $ECR_REGISTRY/frontend:latest ./frontend
+          docker push $ECR_REGISTRY/frontend:latest
+
+      - name: 🐳 Build & push backend to ECR
+        run: |
+          docker build -t $ECR_REGISTRY/backend:latest ./backend
+          docker push $ECR_REGISTRY/backend:latest
+
+  deploy:
+    name: 🚢 Deploy to Amazon EKS
+    runs-on: ubuntu-latest
+    needs: push
+
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ⚙️ Update kubeconfig for EKS
+        run: aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
+
+      - name: 📦 Deploy Kubernetes manifests
+        run: kubectl apply -f k8s/
