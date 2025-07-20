@@ -23,6 +23,7 @@ spec:
       volumes:
         - name: mongo-storage
           emptyDir: {}
+
 ---
 apiVersion: v1
 kind: Service
@@ -36,3 +37,4 @@ spec:
       port: 27017
       targetPort: 27017
   type: ClusterIP
+

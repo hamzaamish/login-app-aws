@@ -1,4 +1,4 @@
-variable "location" {
-  default = "East US"
+variable "region" {
+  default = "us-east-1"
 }
 

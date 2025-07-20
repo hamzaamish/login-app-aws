@@ -14,9 +14,10 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: amishacr.azurecr.io/frontend:latest
+          image: 862848730948.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
           ports:
             - containerPort: 3000
+
 ---
 apiVersion: v1
 kind: Service
@@ -30,3 +31,4 @@ spec:
       port: 80
       targetPort: 3000
   type: LoadBalancer
+
