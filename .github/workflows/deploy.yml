@@ -1,27 +1,19 @@
-name: Build and Deploy to EKS
+name: Build and Deploy to AWS ECR and EKS
 
 on:
   push:
     branches:
-      - main  # Change to 'dev' if you prefer
-
-env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
-  FRONTEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/frontend:latest
-  BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/backend:latest
-
-permissions:
-  id-token: write
-  contents: read
+      - main  # or your working branch
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
+    environment: production
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -31,22 +23,27 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        run: aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-
-      - name: Build and push Frontend Docker image
+        id: login-ecr
         run: |
-          docker build -t $FRONTEND_IMAGE ./frontend
-          docker push $FRONTEND_IMAGE
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-      - name: Build and push Backend Docker image
+      - name: Build and Push Frontend Docker image
         run: |
-          docker build -t $BACKEND_IMAGE ./backend
-          docker push $BACKEND_IMAGE
+          docker build -t frontend ./frontend
+          docker tag frontend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
 
-      - name: Set kubeconfig from base64
+      - name: Build and Push Backend Docker image
         run: |
-          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > kubeconfig
-          export KUBECONFIG=$PWD/kubeconfig
+          docker build -t backend ./backend
+          docker tag backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
+
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
 
       - name: Deploy to EKS
-        run: kubectl apply -f k8s/
+        run: |
+          kubectl apply -f k8s/
