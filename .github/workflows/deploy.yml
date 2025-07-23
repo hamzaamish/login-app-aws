@@ -14,8 +14,8 @@ jobs:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
     outputs:
-      frontend_image: ${{ steps.frontend_tag.outputs.image }}
-      backend_image: ${{ steps.backend_tag.outputs.image }}
+      frontend_image: ${{ steps.frontend.outputs.image }}
+      backend_image: ${{ steps.backend.outputs.image }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         
       - name: Build and Push Frontend Image
-        id: frontend_tag
+        id: frontend
         run: |
           ECR_IMAGE="${{ env.ECR_REGISTRY }}/frontend:${{ github.sha }}"
           docker build -t frontend:latest ./frontend
@@ -40,7 +40,7 @@ jobs:
           echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
           
       - name: Build and Push Backend Image
-        id: backend_tag
+        id: backend
         run: |
           ECR_IMAGE="${{ env.ECR_REGISTRY }}/backend:${{ github.sha }}"
           docker build -t backend:latest ./backend
