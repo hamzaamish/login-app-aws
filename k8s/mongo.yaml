@@ -25,7 +25,6 @@ spec:
         - name: mongo-storage
           emptyDir: {}
       restartPolicy: Always
-
 ---
 # MongoDB Service
 apiVersion: v1
