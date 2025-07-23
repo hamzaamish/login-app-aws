@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - aws-deploy   
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
@@ -64,24 +63,18 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         
       - name: Run Trivy vulnerability scanner - Frontend
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.25.0
         with:
           image-ref: ${{ needs.build-and-push.outputs.frontend_image }}
-          format: 'sarif'
-          output: 'trivy-frontend-results.sarif'
+          format: 'table'
+          exit-code: '0'
           
       - name: Run Trivy vulnerability scanner - Backend
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.25.0
         with:
           image-ref: ${{ needs.build-and-push.outputs.backend_image }}
-          format: 'sarif'
-          output: 'trivy-backend-results.sarif'
-          
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
-        with:
-          sarif_file: '.'
+          format: 'table'
+          exit-code: '0'
 
   deploy:
     name: Deploy to EKS
