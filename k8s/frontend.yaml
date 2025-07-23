@@ -15,11 +15,10 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 862848730948.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
+          image: frontend:latest
           ports:
             - containerPort: 3000
       restartPolicy: Always
-
 ---
 # Frontend Service
 apiVersion: v1
