@@ -1,3 +1,4 @@
+# Backend Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,8 +21,10 @@ spec:
           env:
             - name: MONGO_URI
               value: mongodb://mongo-service:27017/login-db
+      restartPolicy: Always
 
 ---
+# Backend Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -34,4 +37,3 @@ spec:
       port: 5000
       targetPort: 5000
   type: LoadBalancer
-
