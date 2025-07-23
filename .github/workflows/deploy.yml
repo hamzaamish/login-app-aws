@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - aws-deploy
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
@@ -34,26 +33,25 @@ jobs:
         id: frontend_tag
         run: |
           docker build -t frontend:latest ./frontend
-          docker tag frontend:latest ${{ env.ECR_REGISTRY }}/frontend:latest
-          docker push ${{ env.ECR_REGISTRY }}/frontend:latest
-          echo "image=${{ env.ECR_REGISTRY }}/frontend:latest" >> $GITHUB_OUTPUT
+          ECR_IMAGE="${{ env.ECR_REGISTRY }}/frontend:${{ github.sha }}"
+          docker tag frontend:latest $ECR_IMAGE
+          docker push $ECR_IMAGE
+          echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
           
       - name: Build and Push Backend Image
         id: backend_tag
         run: |
           docker build -t backend:latest ./backend
-          docker tag backend:latest ${{ env.ECR_REGISTRY }}/backend:latest
-          docker push ${{ env.ECR_REGISTRY }}/backend:latest
-          echo "image=${{ env.ECR_REGISTRY }}/backend:latest" >> $GITHUB_OUTPUT
+          ECR_IMAGE="${{ env.ECR_REGISTRY }}/backend:${{ github.sha }}"
+          docker tag backend:latest $ECR_IMAGE
+          docker push $ECR_IMAGE
+          echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
 
-  test:
-    name: Run Container Tests
+  security-scan:
+    name: Security Scan with Trivy
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -64,28 +62,29 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
         
-      - name: Pull and Run Frontend
-        run: |
-          docker pull ${{ needs.build-and-push.outputs.frontend_image }}
-          docker run -d --name frontend-test -p 3000:3000 ${{ needs.build-and-push.outputs.frontend_image }}
+      - name: Run Trivy vulnerability scanner - Frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build-and-push.outputs.frontend_image }}
+          format: 'sarif'
+          output: 'trivy-frontend-results.sarif'
           
-      - name: Pull and Run Backend
-        run: |
-          docker pull ${{ needs.build-and-push.outputs.backend_image }}
-          docker run -d --name backend-test -p 5000:5000 ${{ needs.build-and-push.outputs.backend_image }}
+      - name: Run Trivy vulnerability scanner - Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build-and-push.outputs.backend_image }}
+          format: 'sarif'
+          output: 'trivy-backend-results.sarif'
           
-      - name: Verify Containers
-        run: docker ps
-        
-      - name: Basic Health Check (optional)
-        run: |
-          sleep 10
-          curl -f http://localhost:3000 || echo "Frontend health check failed"
-          curl -f http://localhost:5000/health || echo "Backend health check failed"
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: '.'
 
   deploy:
     name: Deploy to EKS
-    needs: build-and-push
+    needs: [build-and-push, security-scan]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -111,7 +110,9 @@ jobs:
             
       - name: Deploy Manifests
         run: |
-          # Update image tags in manifests (if using sed)
-          sed -i "s|frontend:latest|${{ needs.build-and-push.outputs.frontend_image }}|g" k8s/*.yaml
-          sed -i "s|backend:latest|${{ needs.build-and-push.outputs.backend_image }}|g" k8s/*.yaml
+          sed -i "s|image: frontend:latest|image: ${{ needs.build-and-push.outputs.frontend_image }}|g" k8s/*.yaml
+          sed -i "s|image: backend:latest|image: ${{ needs.build-and-push.outputs.backend_image }}|g" k8s/*.yaml
+          
           kubectl apply -f k8s/
+          kubectl rollout status deployment/login-app-frontend
+          kubectl rollout status deployment/login-app-backend
