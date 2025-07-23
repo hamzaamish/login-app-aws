@@ -63,18 +63,16 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         
       - name: Run Trivy vulnerability scanner - Frontend
-        uses: aquasecurity/trivy-action@0.25.0
-        with:
-          image-ref: ${{ needs.build-and-push.outputs.frontend_image }}
-          format: 'table'
-          exit-code: '0'
-          
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --format table \
+            ${{ needs.build-and-push.outputs.frontend_image }}
+            
       - name: Run Trivy vulnerability scanner - Backend
-        uses: aquasecurity/trivy-action@0.25.0
-        with:
-          image-ref: ${{ needs.build-and-push.outputs.backend_image }}
-          format: 'table'
-          exit-code: '0'
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --format table \
+            ${{ needs.build-and-push.outputs.backend_image }}
 
   deploy:
     name: Deploy to EKS
