@@ -33,8 +33,8 @@ jobs:
       - name: Build and Push Frontend Image
         id: frontend_tag
         run: |
-          docker build -t frontend:latest ./frontend
           ECR_IMAGE="${{ env.ECR_REGISTRY }}/frontend:${{ github.sha }}"
+          docker build -t frontend:latest ./frontend
           docker tag frontend:latest $ECR_IMAGE
           docker push $ECR_IMAGE
           echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
@@ -42,8 +42,8 @@ jobs:
       - name: Build and Push Backend Image
         id: backend_tag
         run: |
-          docker build -t backend:latest ./backend
           ECR_IMAGE="${{ env.ECR_REGISTRY }}/backend:${{ github.sha }}"
+          docker build -t backend:latest ./backend
           docker tag backend:latest $ECR_IMAGE
           docker push $ECR_IMAGE
           echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
@@ -87,8 +87,14 @@ jobs:
             
       - name: Deploy Manifests
         run: |
+          echo "Frontend image: ${{ needs.build-and-push.outputs.frontend_image }}"
+          echo "Backend image: ${{ needs.build-and-push.outputs.backend_image }}"
+          
           sed -i "s|image: frontend:latest|image: ${{ needs.build-and-push.outputs.frontend_image }}|g" k8s/*.yaml
           sed -i "s|image: backend:latest|image: ${{ needs.build-and-push.outputs.backend_image }}|g" k8s/*.yaml
+          
+          echo "Updated manifests:"
+          grep "image:" k8s/*.yaml
           
           kubectl apply -f k8s/
           kubectl rollout status deployment/login-app-frontend
