@@ -15,14 +15,13 @@ spec:
     spec:
       containers:
         - name: backend
-          image: 862848730948.dkr.ecr.us-east-1.amazonaws.com/backend:latest
+          image: backend:latest
           ports:
             - containerPort: 5000
           env:
             - name: MONGO_URI
               value: mongodb://mongo-service:27017/login-db
       restartPolicy: Always
-
 ---
 # Backend Service
 apiVersion: v1
