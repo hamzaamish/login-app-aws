@@ -2,12 +2,12 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ aws-deploy ]
+    branches: [ main ]
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-  CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: login-eks-cluster
+  IMAGE_NAME: 862848730948.dkr.ecr.us-east-1.amazonaws.com/frontend
 
 jobs:
   build:
@@ -29,13 +29,11 @@ jobs:
 
     - name: Build Docker image
       run: |
-        IMAGE_NAME=${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-        docker build -t $IMAGE_NAME .
+        docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
 
     - name: Save Docker image as tar
       run: |
-        IMAGE_NAME=${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-        docker save -o image.tar $IMAGE_NAME
+        docker save -o image.tar ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
     - name: Upload artifacts (image and tag)
       uses: actions/upload-artifact@v4
@@ -85,14 +83,9 @@ jobs:
 
     - name: Load and push Docker image
       run: |
-        ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
-        IMAGE_NAME=${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-        IMAGE_URI=$ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/$IMAGE_NAME
-
+        IMAGE_URI=${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
         docker load -i image.tar
-        docker tag $IMAGE_NAME $IMAGE_URI
         docker push $IMAGE_URI
-
         echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
         echo $IMAGE_URI > image_uri.txt
 
@@ -134,5 +127,4 @@ jobs:
 
     - name: Deploy to EKS
       run: |
-        kubectl set image deployment/login-app-backend backend=$IMAGE_URI --record || echo "⚠️ Backend deployment not found."
-        kubectl set image deployment/login-app-frontend frontend=$IMAGE_URI --record || echo "⚠️ Frontend deployment not found."
+        kubectl set image deployment/login-app login-app=$IMAGE_URI --record || echo "Deployment not found."
