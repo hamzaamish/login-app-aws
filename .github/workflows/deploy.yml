@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - aws-deploy
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
@@ -34,19 +33,28 @@ jobs:
         id: frontend
         run: |
           ECR_IMAGE="${{ env.ECR_REGISTRY }}/frontend:${{ github.sha }}"
+          echo "Building and pushing: $ECR_IMAGE"
           docker build -t frontend:latest ./frontend
           docker tag frontend:latest $ECR_IMAGE
           docker push $ECR_IMAGE
+          echo "FRONTEND_IMAGE=$ECR_IMAGE" >> $GITHUB_ENV
           echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
           
       - name: Build and Push Backend Image
         id: backend
         run: |
           ECR_IMAGE="${{ env.ECR_REGISTRY }}/backend:${{ github.sha }}"
+          echo "Building and pushing: $ECR_IMAGE"
           docker build -t backend:latest ./backend
           docker tag backend:latest $ECR_IMAGE
           docker push $ECR_IMAGE
+          echo "BACKEND_IMAGE=$ECR_IMAGE" >> $GITHUB_ENV
           echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
+          
+      - name: Output Images
+        run: |
+          echo "Frontend: $FRONTEND_IMAGE"
+          echo "Backend: $BACKEND_IMAGE"
 
   basic-test:
     name: Basic Image Test
