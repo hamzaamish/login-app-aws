@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - aws-deploy
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
@@ -13,9 +12,6 @@ jobs:
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-    outputs:
-      frontend_image: ${{ steps.frontend.outputs.image }}
-      backend_image: ${{ steps.backend.outputs.image }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -31,46 +27,20 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         
       - name: Build and Push Frontend Image
-        id: frontend
         run: |
-          ECR_IMAGE="${{ env.ECR_REGISTRY }}/frontend:${{ github.sha }}"
-          echo "Building and pushing: $ECR_IMAGE"
           docker build -t frontend:latest ./frontend
-          docker tag frontend:latest $ECR_IMAGE
-          docker push $ECR_IMAGE
-          echo "FRONTEND_IMAGE=$ECR_IMAGE" >> $GITHUB_ENV
-          echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
+          docker tag frontend:latest ${{ env.ECR_REGISTRY }}/frontend:latest
+          docker push ${{ env.ECR_REGISTRY }}/frontend:latest
           
       - name: Build and Push Backend Image
-        id: backend
         run: |
-          ECR_IMAGE="${{ env.ECR_REGISTRY }}/backend:${{ github.sha }}"
-          echo "Building and pushing: $ECR_IMAGE"
           docker build -t backend:latest ./backend
-          docker tag backend:latest $ECR_IMAGE
-          docker push $ECR_IMAGE
-          echo "BACKEND_IMAGE=$ECR_IMAGE" >> $GITHUB_ENV
-          echo "image=$ECR_IMAGE" >> $GITHUB_OUTPUT
-          
-      - name: Output Images
-        run: |
-          echo "Frontend: $FRONTEND_IMAGE"
-          echo "Backend: $BACKEND_IMAGE"
-
-  basic-test:
-    name: Basic Image Test
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Test Images Exist
-        run: |
-          echo "Frontend image: ${{ needs.build-and-push.outputs.frontend_image }}"
-          echo "Backend image: ${{ needs.build-and-push.outputs.backend_image }}"
-          echo "✅ Build completed successfully"
+          docker tag backend:latest ${{ env.ECR_REGISTRY }}/backend:latest
+          docker push ${{ env.ECR_REGISTRY }}/backend:latest
 
   deploy:
     name: Deploy to EKS
-    needs: [build-and-push, basic-test]
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -95,16 +65,4 @@ jobs:
             --name ${{ env.EKS_CLUSTER_NAME }}
             
       - name: Deploy Manifests
-        run: |
-          echo "Frontend image: ${{ needs.build-and-push.outputs.frontend_image }}"
-          echo "Backend image: ${{ needs.build-and-push.outputs.backend_image }}"
-          
-          sed -i "s|image: frontend:latest|image: ${{ needs.build-and-push.outputs.frontend_image }}|g" k8s/*.yaml
-          sed -i "s|image: backend:latest|image: ${{ needs.build-and-push.outputs.backend_image }}|g" k8s/*.yaml
-          
-          echo "Updated manifests:"
-          grep "image:" k8s/*.yaml
-          
-          kubectl apply -f k8s/
-          kubectl rollout status deployment/login-app-frontend
-          kubectl rollout status deployment/login-app-backend
+        run: kubectl apply -f k8s/
