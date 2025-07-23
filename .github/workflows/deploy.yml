@@ -1,97 +1,84 @@
-name: CI/CD for Login App
+name: CI/CD Pipeline for Login App
 
 on:
   push:
     branches:
-      - aws-deploy
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
 
 jobs:
   build:
+    name: Build Docker Images
     runs-on: ubuntu-latest
+    outputs:
+      frontend_image: ${{ steps.frontend_tag.outputs.image }}
+      backend_image: ${{ steps.backend_tag.outputs.image }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Frontend Docker Image
+      - name: Build Frontend Image
+        id: frontend_tag
         run: |
-          docker build -t frontend ./frontend
-          docker save frontend -o frontend.tar
+          docker build -t frontend:latest ./frontend
+          echo "image=frontend:latest" >> $GITHUB_OUTPUT
 
-      - name: Build Backend Docker Image
+      - name: Build Backend Image
+        id: backend_tag
         run: |
-          docker build -t backend ./backend
-          docker save backend -o backend.tar
-
-      - name: Upload Docker Images as Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-images
-          path: |
-            frontend.tar
-            backend.tar
+          docker build -t backend:latest ./backend
+          echo "image=backend:latest" >> $GITHUB_OUTPUT
 
   test:
-    runs-on: ubuntu-latest
+    name: Run Container Tests
     needs: build
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Run Frontend
+        run: docker run -d --rm -p 3000:3000 frontend:latest
 
-      # Example test — replace with actual test framework
-      - name: Run Backend Tests
-        run: |
-          echo "Running backend tests"
-          cd backend
-          npm install
-          npm test || echo "No tests found"
+      - name: Run Backend
+        run: docker run -d --rm -p 5000:5000 backend:latest
 
-      - name: Run Frontend Tests
-        run: |
-          echo "Running frontend tests"
-          cd frontend
-          npm install
-          npm run test || echo "No tests found"
+      - name: Verify Containers
+        run: docker ps
 
   push:
-    runs-on: ubuntu-latest
+    name: Push to ECR
     needs: build
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Download Docker Images from Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images
-
-      - name: Load Docker Images
-        run: |
-          docker load -i frontend.tar
-          docker load -i backend.tar
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Tag and Push Frontend Image
+      - name: Tag & Push Frontend
         run: |
-          docker tag frontend ${{ secrets.ECR_REGISTRY }}/frontend:latest
-          docker push ${{ secrets.ECR_REGISTRY }}/frontend:latest
+          docker tag frontend:latest ${{ env.ECR_REGISTRY }}/frontend:latest
+          docker push ${{ env.ECR_REGISTRY }}/frontend:latest
 
-      - name: Tag and Push Backend Image
+      - name: Tag & Push Backend
         run: |
-          docker tag backend ${{ secrets.ECR_REGISTRY }}/backend:latest
-          docker push ${{ secrets.ECR_REGISTRY }}/backend:latest
+          docker tag backend:latest ${{ env.ECR_REGISTRY }}/backend:latest
+          docker push ${{ env.ECR_REGISTRY }}/backend:latest
 
   deploy:
-    runs-on: ubuntu-latest
+    name: Deploy to EKS
     needs: push
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -101,15 +88,25 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Set up kubectl
+      - name: Setup `kubectl`
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Load Kubeconfig from Secret
         run: |
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 --decode > kubeconfig
           export KUBECONFIG=$PWD/kubeconfig
-          kubectl get nodes
 
-      - name: Deploy to EKS
+      - name: Set Kube Context
         run: |
-          export KUBECONFIG=$PWD/kubeconfig
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER_NAME }} \
+            --kubeconfig kubeconfig
+
+      - name: Deploy Manifests
+        run: |
           kubectl apply -f k8s/
